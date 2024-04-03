@@ -29,10 +29,7 @@
 
 /* Header file includes */
 #include "cycfg.h"
-//#include "cyabs_rtos.h"
 #include "mtb_radar_sensing.h"
-//#include "rtthread.h"
-#include "rtthread.h"
 
 /* Pin number designated for LED RED */
 #define LED_RGB_RED (P10_0)
@@ -54,7 +51,7 @@
 /* Stack size for the radar task */
 #define RADAR_TASK_STACK_SIZE (4096)
 /* Priority number for the radar task */
-#define RADAR_TASK_PRIORITY (20)
+#define RADAR_TASK_PRIORITY (CY_RTOS_PRIORITY_NORMAL)
 
 /*******************************************************************************
  * Global Variables
@@ -64,9 +61,5 @@ extern mtb_radar_sensing_context_t sensing_context;
 /*******************************************************************************
  * Functions
  *******************************************************************************/
-void radar_task(void* arg);
+void radar_task(void *arg);
 void radar_presence_task_set_mute(bool mute);
-
-/* USER ADD */
-
-#define TARGET_CYSBSYSKIT_DEV_01

@@ -32,7 +32,7 @@
 
 /* Header file for local task */
 #include "radar_task.h"
-//#include "radar_terminal_ui.h"
+#include "rtthread.h"
 
 /*******************************************************************************
  * Macros
@@ -75,7 +75,7 @@
  * Global Variables
  ******************************************************************************/
 mtb_radar_sensing_context_t sensing_context;
-static rt_mutex_t terminal_print_mutex = RT_NULL;
+static rt_mutex_t terminal_print_mutex;
 extern cyhal_timer_t led_blink_timer;
 
 /*******************************************************************************
@@ -91,17 +91,11 @@ extern cyhal_timer_t led_blink_timer;
  * Return:
  *   Status of mutex request
  *******************************************************************************/
-#if USE_ADD
-static cy_rslt_t radar_presence_terminal_mutex_get(cy_time_t timeout_ms)
+static cy_rslt_t radar_presence_terminal_mutex_get(int32_t timeout_ms)
 {
-    return (cy_rtos_get_mutex(&terminal_print_mutex, timeout_ms));
+    return (rt_mutex_take(terminal_print_mutex, timeout_ms));
 }
-#endif /* USE_ADD */
 
-static cy_rslt_t radar_presence_terminal_mutex_get(uint32_t timeout_ms)
-{
-		return  rt_mutex_take(terminal_print_mutex, timeout_ms);
-}
 /*******************************************************************************
  * Function Name: radar_presence_terminal_mutex_release
  ********************************************************************************
@@ -116,7 +110,7 @@ static cy_rslt_t radar_presence_terminal_mutex_get(uint32_t timeout_ms)
  *******************************************************************************/
 static cy_rslt_t radar_presence_terminal_mutex_release(void)
 {
-	  return (rt_mutex_release(terminal_print_mutex));
+    return (rt_mutex_take(terminal_print_mutex, RT_WAITING_FOREVER));
 }
 
 /*******************************************************************************
@@ -183,7 +177,7 @@ static void radar_sensing_callback(mtb_radar_sensing_context_t *context,
  *******************************************************************************/
 static uint64_t ifx_currenttime()
 {
-    return (uint64_t)rt_tick_get() * ( ( uint32_t ) 1000 / RT_TICK_PER_SECOND );
+    return rt_tick_get();
 }
 
 /*******************************************************************************
@@ -207,9 +201,7 @@ void radar_task(void* arg)
     cy_rslt_t result = CY_RSLT_SUCCESS;
 
     /* Initialize mutex for terminal print */
-		//result = cy_rtos_init_mutex(&terminal_print_mutex);
-	terminal_print_mutex = rt_mutex_create("dmutex", RT_IPC_FLAG_PRIO);
-
+    terminal_print_mutex = rt_mutex_create("dmutex", RT_IPC_FLAG_PRIO);
 
     /* Initialize the three LED ports and set LEDs' initial state to off */
     result = cyhal_gpio_init(LED_RGB_RED, CYHAL_GPIO_DIR_OUTPUT, CYHAL_GPIO_DRIVE_STRONG, LED_STATE_OFF);
@@ -280,7 +272,7 @@ void radar_task(void* arg)
     Cy_GPIO_SetSlewRate(CYHAL_GET_PORTADDR(CYBSP_RADAR_SPI_MOSI), CYHAL_GET_PIN(CYBSP_RADAR_SPI_MOSI), CY_GPIO_SLEW_FAST);
     Cy_GPIO_SetDriveSel(CYHAL_GET_PORTADDR(CYBSP_RADAR_SPI_MOSI), CYHAL_GET_PIN(CYBSP_RADAR_SPI_MOSI), CY_GPIO_DRIVE_1_8);
     Cy_GPIO_SetSlewRate(CYHAL_GET_PORTADDR(CYBSP_RADAR_SPI_CLK), CYHAL_GET_PIN(CYBSP_RADAR_SPI_CLK), CY_GPIO_SLEW_FAST);
-    Cy_GPIO_SetDriveSel(CYHAL_GET_PORTADDR(CYBSP_RADAR_SPI_CLK), CYHAL_GET_PIN(CYBSP_RADAR_SPI_CLK), CY_GPIO_DRIVE_1_8);  
+    Cy_GPIO_SetDriveSel(CYHAL_GET_PORTADDR(CYBSP_RADAR_SPI_CLK), CYHAL_GET_PIN(CYBSP_RADAR_SPI_CLK), CY_GPIO_DRIVE_1_8);
 
     /* Set the data rate to 20 Mbps */
     if (cyhal_spi_set_frequency(hw_cfg.spi, SPI_FREQUENCY) != CY_RSLT_SUCCESS)
@@ -292,10 +284,9 @@ void radar_task(void* arg)
     /* also initialize radar device configuration */
     if (mtb_radar_sensing_init(&sensing_context, &hw_cfg, MTB_RADAR_SENSING_MASK_PRESENCE_EVENTS) != MTB_RADAR_SENSING_SUCCESS)
     {
-        rt_kprintf("ifx_radar_sensing_init error - Radar Wingboard not connected?\n");
-        rt_kprintf("Exiting radar task\n");
+        printf("ifx_radar_sensing_init error - Radar Wingboard not connected?\n");
+        printf("Exiting radar task\n");
         // exit current thread (suspend)
-        //cy_rtos_exit_thread();
     }
 
     /* Register callback to handle presence detection events */
@@ -324,41 +315,27 @@ void radar_task(void* arg)
         CY_ASSERT(0);
     }
 
-    /* Stop LED blinking timer, turn on LED to indicate user that turn-on phase is over and entering ready state */
-    result = cyhal_timer_stop(&led_blink_timer);
-    if (result != CY_RSLT_SUCCESS)
-    {
-        CY_ASSERT(0);
-    }
-#ifdef USER_ADD
-    cyhal_gpio_write(CYBSP_USER_LED, false); /* USER_LED is active low */
-#endif /* USER_ADD */
+//    /* Stop LED blinking timer, turn on LED to indicate user that turn-on phase is over and entering ready state */
+//    result = cyhal_timer_stop(&led_blink_timer);
+//    if (result != CY_RSLT_SUCCESS)
+//    {
+//        CY_ASSERT(0);
+//    }
+//    cyhal_gpio_write(CYBSP_USER_LED, false); /* USER_LED is active low */
+
 
     /* Create task for a terminal UI that configures parameters for presence */
     /* detection application.                                                */
-#ifdef USE_ADD
-    cy_thread_t ifxradar_task_terminal_ui;
-    result = cy_rtos_create_thread(&ifxradar_task_terminal_ui,
-                                   radar_presence_terminal_ui,
-                                   RADAR_PRESENCE_TERMINAL_UI_TASK_NAME,
-                                   NULL,
-                                   RADAR_PRESENCE_TERMINAL_UI_TASK_STACK_SIZE,
-                                   RADAR_PRESENCE_TERMINAL_UI_TASK_PRIORITY,
-                                   (cy_thread_arg_t)NULL);
-    if (result != CY_RSLT_SUCCESS)
-    {
-        CY_ASSERT(0);
-    }
-#endif /* USE_ADD */
+
     for (;;)
     {
         /* Process data acquired from radar every 5ms */
         if (mtb_radar_sensing_process(&sensing_context, ifx_currenttime()) != MTB_RADAR_SENSING_SUCCESS)
         {
-            rt_kprintf("mtb_radar_sensing_process error\n");
+            printf("mtb_radar_sensing_process error\n");
             CY_ASSERT(0);
         }
-        rt_thread_delay(RADAR_SENSING_PROCESS_DELAY);
+        rt_thread_mdelay(5);
     }
 }
 
@@ -381,7 +358,7 @@ void radar_presence_task_set_mute(bool mute)
 {
     if (mute)
     {
-        radar_presence_terminal_mutex_get(RT_WAITING_FOREVER);
+        radar_presence_terminal_mutex_get((uint32_t)0xffffffffUL);
         return;
     }
     radar_presence_terminal_mutex_release();

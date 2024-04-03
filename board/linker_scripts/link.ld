@@ -145,6 +145,7 @@ SECTIONS
     .text ORIGIN(flash) + FLASH_CM0P_SIZE :
     {
         . = ALIGN(4);
+         _stext = .;
         __Vectors = . ;
         KEEP(*(.vectors))
         . = ALIGN(4);
@@ -205,6 +206,9 @@ SECTIONS
         __rt_init_start = .;
         KEEP(*(SORT(.rti_fn*)))
         __rt_init_end = .;
+        
+        . = ALIGN(4);
+        _etext = .;
 
     } > flash
 
